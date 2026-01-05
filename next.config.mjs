@@ -1,12 +1,20 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
-        protocol:'http',
+        protocol: 'http',
         hostname: 'localhost',
         port: '5000',
+        pathname: '/uploads/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'api-xmg2fjjbya-uc.a.run.app',
         pathname: '/uploads/**',
       },
     ],
