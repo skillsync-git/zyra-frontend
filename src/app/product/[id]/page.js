@@ -1,23 +1,3 @@
-// import ProductViewPage from "@/app/product/[id]/productview";
-
-// export async function generateMetadata({ params }) {
-//   // In production, fetch product data here
-//   return {
-//     title: `Product ${params.id} - Silken`,
-//     description: 'Premium silk saree details',
-//   };
-// }
-
-// export default function ProductPage({ params }) {
-//   return <ProductViewPage params={params} />;
-// }
-
-
-
-
-
-
-
 
 'use client';
 
