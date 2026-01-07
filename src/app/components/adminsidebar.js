@@ -41,7 +41,7 @@ const AdminSidebar = () => {
     { href: "/adminoffers", label: "Offers", icon: <TagsFill className="me-2" /> },
     { href: "/adminlimitedsales", label: "Limited Sale", icon: <ClockHistory className="me-2" /> },
     { href: "/adminmessages", label: "Messages", icon: <EnvelopeFill className="me-2" /> },
-    { href: "/adminco", label: "Coupon", icon: <TicketPerforatedFill className="me-2" /> },
+    // { href: "/adminco", label: "Coupon", icon: <TicketPerforatedFill className="me-2" /> },
   ];
 
   // const categories = [

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import AdminSidebar from "../components/adminsidebar";
+import { uploadToFirebaseStorage } from "@/utils/fbupload";
 
 export default function CategoriesAdminTable() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function CategoriesAdminTable() {
     description: "",
     image_file: null,
   });
+  const [existingImageUrl, setExistingImageUrl] = useState("");
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -96,15 +98,23 @@ export default function CategoriesAdminTable() {
       description: cat.description,
       image_file: null
     });
+    setExistingImageUrl(cat.image_url || "");
     setShowModal(true);
   };
 
   const handleDelete = async (cat) => {
     if (confirm(`Are you sure you want to delete ${cat.category_name}?`)) {
-      await fetch(`https://api-xmg2fjjbya-uc.a.run.app/api/categories/${cat.category_id}`, {
+      const response = await fetch(`https://api-xmg2fjjbya-uc.a.run.app/api/categories/${cat.category_id}`, {
         method: "DELETE"
       });
-      setCategories(categories.filter(x => x.category_id !== cat.category_id));
+      
+      if (response.ok) {
+        alert("Category deleted successfully!");
+        fetchCategories();
+      } else {
+        const errorData = await response.json();
+        alert(errorData.error || "Failed to delete category");
+      }
     }
   };
 
@@ -116,6 +126,7 @@ export default function CategoriesAdminTable() {
       description: "",
       image_file: null
     });
+    setExistingImageUrl("");
     setShowModal(true);
   };
 
@@ -130,27 +141,85 @@ export default function CategoriesAdminTable() {
 
   const handleAddOrEdit = async e => {
     e.preventDefault();
-    const formData = new FormData();
-    formData.append("category_name", form.category_name);
-    formData.append("description", form.description);
-    if (form.image_file) formData.append("image", form.image_file);
+    
+    try {
+      let imageUrl = existingImageUrl; // Keep existing image by default
+      
+      // Upload new image to Firebase if selected
+      if (form.image_file) {
+        console.log('📤 Uploading image to Firebase...');
+        imageUrl = await uploadToFirebaseStorage(form.image_file, "categories");
+        console.log('✅ Image uploaded:', imageUrl);
+      }
+      
+      // Prepare JSON payload
+      const payload = {
+        category_name: form.category_name.trim(),
+        description: form.description.trim(),
+        image_url: imageUrl || null
+      };
+      
+      console.log("=== Payload to API ===");
+      console.log(JSON.stringify(payload, null, 2));
+      console.log("======================");
+      
+      let url, method;
+      if (editCategory) {
+        url = `https://api-xmg2fjjbya-uc.a.run.app/api/categories/${editCategory.category_id}`;
+        method = "PUT";
+      } else {
+        url = "https://api-xmg2fjjbya-uc.a.run.app/api/categories";
+        method = "POST";
+      }
 
-    let url, method;
-    if (editCategory) {
-      url = `https://api-xmg2fjjbya-uc.a.run.app/api/categories/${editCategory.category_id}`;
-      method = "PUT";
-    } else {
-      url = "https://api-xmg2fjjbya-uc.a.run.app/api/categories";
-      method = "POST";
+      const response = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("✅ Success:", result);
+        
+        alert(`Category ${editCategory ? "updated" : "added"} successfully!`);
+        setShowModal(false);
+        fetchCategories();
+        
+        // Reset form
+        setForm({
+          category_name: "",
+          description: "",
+          image_file: null
+        });
+        setExistingImageUrl("");
+        setEditCategory(null);
+      } else {
+        const contentType = response.headers.get("content-type");
+        let errorMessage = "Failed to save category";
+        
+        try {
+          if (contentType && contentType.includes("application/json")) {
+            const errorData = await response.json();
+            console.error("❌ Error response:", errorData);
+            errorMessage = errorData.message || errorData.error || errorMessage;
+          } else {
+            const errorText = await response.text();
+            console.error("❌ Error response (HTML):", errorText);
+            errorMessage = "Internal Server Error - Check backend logs";
+          }
+        } catch (e) {
+          console.error("Error parsing response:", e);
+        }
+        
+        alert(errorMessage);
+      }
+    } catch (error) {
+      console.error("❌ Network error:", error);
+      alert(`Error saving category: ${error.message}`);
     }
-
-    await fetch(url, {
-      method,
-      body: formData,
-    });
-
-    setShowModal(false);
-    fetchCategories();
   };
 
   return (
@@ -222,6 +291,7 @@ export default function CategoriesAdminTable() {
             justifyContent: "space-between",
             flexDirection: isMobile ? "column" : "row",
             marginBottom: 18,
+            marginTop: 30
           }}>
             <h2 style={{ fontWeight: 700, fontSize: isMobile ? "1.4rem" : "2rem", marginLeft: 6, marginBottom: isMobile ? 10 : 0 }}>
               Categories
@@ -320,7 +390,7 @@ export default function CategoriesAdminTable() {
                     <div style={{ fontWeight: 600, fontSize: 17, marginBottom: 4 }}>{cat.category_name}</div>
                     {cat.image_url && (
                       <img
-                        src={`https://api-xmg2fjjbya-uc.a.run.app${cat.image_url}`}
+                        src={cat.image_url}
                         alt={cat.category_name}
                         style={{ width: 75, height: 48, objectFit: "cover", borderRadius: 4, marginBottom: 6 }}
                       />
@@ -417,7 +487,7 @@ export default function CategoriesAdminTable() {
                         <td style={{ border: "1px solid #ddd", padding: "10px" }}>
                           {cat.image_url && (
                             <img
-                              src={`https://api-xmg2fjjbya-uc.a.run.app${cat.image_url}`}
+                              src={cat.image_url}
                               alt={cat.category_name}
                               style={{ width: 60, height: 40, objectFit: "cover", borderRadius: 4 }}
                             />
@@ -494,77 +564,151 @@ export default function CategoriesAdminTable() {
               left: 0,
               width: "100vw",
               height: "100vh",
-              background: "rgba(0,0,0,0.37)",
+              background: "rgba(0,0,0,0.13)",
               zIndex: 1000,
               display: "flex",
               alignItems: "center",
-              justifyContent: "center"
+              justifyContent: "center",
+              overflow: "auto"
             }}>
               <form onSubmit={handleAddOrEdit} style={{
                 background: "#fff",
                 padding: 32,
-                borderRadius: 8,
+                borderRadius: 20,
                 minWidth: 340,
-                boxShadow: "0 0 18px #0002",
-                position: "relative"
+                maxWidth: 420,
+                width: "100%",
+                boxShadow: "0 4px 32px rgba(0,0,0,0.11)",
+                position: "relative",
+                margin: "20px"
               }}>
-                <h3>{editCategory ? "Edit Category" : "Add Category"}</h3>
-                <div style={{ margin: "12px 0" }}>
-                  <label>Name</label>
+                <h3 style={{
+                  marginTop: 8,
+                  marginBottom: 24,
+                  fontWeight: 700,
+                  fontSize: 24,
+                  textAlign: "center"
+                }}>
+                  {editCategory ? "Edit Category" : "Add Category"}
+                </h3>
+                
+                <div style={{ marginBottom: 17 }}>
+                  <label style={{ fontWeight: 500, marginBottom: 3, display: "block" }}>Category Name</label>
                   <input
                     type="text"
                     name="category_name"
                     value={form.category_name}
                     onChange={handleFormChange}
                     required
-                    style={{ width: "100%", padding: 7, marginTop: 2, border: "1px solid #bbb", borderRadius: 4 }}
+                    autoFocus
+                    style={{
+                      width: "100%",
+                      padding: "9px 12px",
+                      border: "1px solid #d4d4d4",
+                      borderRadius: 5,
+                      fontSize: 16,
+                      background: "#fafbfc"
+                    }}
                   />
                 </div>
-                <div style={{ margin: "12px 0" }}>
-                  <label>Description</label>
-                  <input
-                    type="text"
+                
+                <div style={{ marginBottom: 17 }}>
+                  <label style={{ fontWeight: 500, marginBottom: 3, display: "block" }}>Description</label>
+                  <textarea
                     name="description"
                     value={form.description}
                     onChange={handleFormChange}
                     required
-                    style={{ width: "100%", padding: 7, marginTop: 2, border: "1px solid #bbb", borderRadius: 4 }}
+                    rows={3}
+                    style={{
+                      width: "100%",
+                      padding: "9px 12px",
+                      border: "1px solid #d4d4d4",
+                      borderRadius: 5,
+                      fontSize: 16,
+                      background: "#fafbfc",
+                      resize: "vertical"
+                    }}
                   />
                 </div>
-                <div style={{ margin: "12px 0" }}>
-                  <label>Image</label>
+                
+                <div style={{ marginBottom: 23 }}>
+                  <label style={{ fontWeight: 500, marginBottom: 3, display: "block" }}>Image</label>
                   <input
                     type="file"
                     accept="image/*"
                     name="image_file"
                     onChange={handleFormChange}
-                    style={{ display: "block", marginTop: 2 }}
+                    style={{ marginTop: 7, width: "100%" }}
                   />
-                  {editCategory && editCategory.image_url && (
-                    <div>
+                  {form.image_file && (
+                    <div style={{ marginTop: 7, fontSize: 13, color: "#666" }}>
+                      Selected: {form.image_file.name}
+                    </div>
+                  )}
+                  {!form.image_file && existingImageUrl && (
+                    <div style={{ marginTop: 10 }}>
                       <img
-                        src={`https://api-xmg2fjjbya-uc.a.run.app${editCategory.image_url}`}
-                        alt=""
-                        style={{ width: 60, height: 40, objectFit: "cover", borderRadius: 4, marginTop: 6 }}
+                        src={existingImageUrl}
+                        alt="Current"
+                        style={{ 
+                          width: 80, 
+                          height: 60, 
+                          objectFit: "cover", 
+                          borderRadius: 6, 
+                          border: "1px solid #eee" 
+                        }}
                       />
+                      <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+                        Current image (will be kept if no new image is selected)
+                      </div>
                     </div>
                   )}
                 </div>
-                <div style={{ marginTop: 18 }}>
+                
+                <div style={{
+                  marginTop: 20,
+                  display: "flex",
+                  gap: 10,
+                  justifyContent: "center"
+                }}>
                   <button type="submit" style={{
-                    background: "#098241",
-                    color: "white",
+                    padding: "11px 28px",
+                    borderRadius: 6,
+                    fontWeight: 600,
+                    color: "#fff",
+                    background: "#1677ff",
                     border: "none",
-                    borderRadius: 5,
-                    padding: "8px 18px",
-                    marginRight: 8,
-                    fontWeight: "bold"
+                    fontSize: 17,
+                    boxShadow: "0 1px 3px #0001",
+                    cursor: "pointer"
                   }}>
-                    Save
+                    {editCategory ? "Update" : "Add"}
                   </button>
-                  <button type="button" onClick={() => setShowModal(false)} style={{
-                    background: "#bbb", color: "#fff", border: "none", borderRadius: 5, padding: "8px 18px"
-                  }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowModal(false);
+                      setEditCategory(null);
+                      setForm({
+                        category_name: "",
+                        description: "",
+                        image_file: null
+                      });
+                      setExistingImageUrl("");
+                    }}
+                    style={{
+                      padding: "11px 22px",
+                      borderRadius: 6,
+                      fontWeight: 600,
+                      color: "#666",
+                      background: "#f2f2f6",
+                      border: "none",
+                      fontSize: 17,
+                      boxShadow: "0 1px 3px #00000010",
+                      cursor: "pointer"
+                    }}
+                  >
                     Cancel
                   </button>
                 </div>

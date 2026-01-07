@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Mail, ArrowRight, Star, Heart, Leaf, TrendingUp, Package, Truck, Shield, Award, Search, ShoppingCart, User, Menu, X, CheckCircle, Gift, Facebook, Instagram, Twitter, Youtube } from 'lucide-react';
 
+import '../firebase'
+
 const API_BASE_URL = 'https://api-xmg2fjjbya-uc.a.run.app';
 
 export default function HomePage() {

@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import AdminSidebar from "../components/adminsidebar";
+import { uploadMultipleImages } from "@/utils/fbupload";
 
 const API_BASE_URL = 'https://api-xmg2fjjbya-uc.a.run.app';
 
@@ -30,10 +31,10 @@ export default function AdminOffersPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   
-  // Add/Edit Modal states
+  // Form states
   const [showModal, setShowModal] = useState(false);
-  const [editingOffer, setEditingOffer] = useState(null);
-  const [formData, setFormData] = useState({
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({
     offer_name: "",
     discount_percent: "",
     flat_discount: "",
@@ -42,8 +43,8 @@ export default function AdminOffersPage() {
     is_flash_sale: false,
     promotional_text: ""
   });
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [image, setImage] = useState(null);
+  const [existingImage, setExistingImage] = useState(null);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -52,7 +53,6 @@ export default function AdminOffersPage() {
     
     checkMobile();
     window.addEventListener('resize', checkMobile);
-    
     fetchOffers();
     
     return () => window.removeEventListener('resize', checkMobile);
@@ -70,16 +70,31 @@ export default function AdminOffersPage() {
         alert("Failed to load offers");
       }
     } catch (error) {
-      console.error("Error:", error);
-      alert("Error connecting to server. Make sure backend is running on port 5000");
+      // console.error("Error:", error);
+      alert("Error connecting to server");
     } finally {
       setLoading(false);
     }
   };
 
+  const handleInput = (e) => {
+    const { name, value, type, checked } = e.target;
+    setForm({ 
+      ...form, 
+      [name]: type === 'checkbox' ? checked : value 
+    });
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setImage(file);
+    }
+  };
+
   const handleAddOffer = () => {
-    setEditingOffer(null);
-    setFormData({
+    setEditingId(null);
+    setForm({
       offer_name: "",
       discount_percent: "",
       flat_discount: "",
@@ -88,15 +103,15 @@ export default function AdminOffersPage() {
       is_flash_sale: false,
       promotional_text: ""
     });
-    setImageFile(null);
-    setImagePreview(null);
+    setImage(null);
+    setExistingImage(null);
     setShowModal(true);
   };
 
-  const handleEditOffer = (offer) => {
-    setEditingOffer(offer);
-    setFormData({
-      offer_name: offer.offer_name || "",
+  const handleEdit = (offer) => {
+    setEditingId(offer.offer_id);
+    setForm({
+      offer_name: offer.offer_name,
       discount_percent: offer.discount_percent || "",
       flat_discount: offer.flat_discount || "",
       start_date: offer.start_date ? offer.start_date.slice(0, 10) : "",
@@ -104,95 +119,150 @@ export default function AdminOffersPage() {
       is_flash_sale: offer.is_flash_sale === 1 || offer.is_flash_sale === true,
       promotional_text: offer.promotional_text || ""
     });
-    setImageFile(null);
-    setImagePreview(offer.offer_image ? `${API_BASE_URL}${offer.offer_image}` : null);
+    setExistingImage(offer.offer_image || null);
+    setImage(null);
     setShowModal(true);
-  };
-
-  const handleFormChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
-  };
-
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     try {
-      const url = editingOffer 
-        ? `${API_BASE_URL}/api/offers/${editingOffer.offer_id}`
+      let offerImageUrl = null;
+      
+      // Upload new image to Firebase if selected
+      if (image) {
+        console.log(`Uploading image to Firebase...`);
+        const uploadedUrls = await uploadMultipleImages([image], "offers");
+        offerImageUrl = uploadedUrls[0];
+        console.log(`✅ Uploaded image:`, offerImageUrl);
+      }
+      
+      // For updates: keep existing image if no new image uploaded
+      if (editingId && !image && existingImage) {
+        offerImageUrl = existingImage;
+        console.log(`Using existing image:`, offerImageUrl);
+      }
+      
+      // Prepare payload
+      const payload = {
+        offer_name: form.offer_name,
+        discount_percent: form.discount_percent || null,
+        flat_discount: form.flat_discount || null,
+        start_date: form.start_date || null,
+        end_date: form.end_date || null,
+        is_flash_sale: form.is_flash_sale ? 1 : 0,
+        promotional_text: form.promotional_text || null,
+        offer_image: offerImageUrl
+      };
+      
+      // Remove empty values except offer_image
+      Object.keys(payload).forEach(key => {
+        if (key !== 'offer_image' && (payload[key] === '' || payload[key] === undefined)) {
+          delete payload[key];
+        }
+      });
+      
+      console.log("=== Payload to API ===");
+      console.log(JSON.stringify(payload, null, 2));
+      
+      const method = editingId ? "PUT" : "POST";
+      const url = editingId
+        ? `${API_BASE_URL}/api/offers/${editingId}`
         : `${API_BASE_URL}/api/offers`;
       
-      const method = editingOffer ? "PUT" : "POST";
-      
-      // Use FormData for file upload
-      const formDataToSend = new FormData();
-      formDataToSend.append('offer_name', formData.offer_name);
-      formDataToSend.append('discount_percent', formData.discount_percent === "" ? "" : formData.discount_percent);
-      formDataToSend.append('flat_discount', formData.flat_discount === "" ? "" : formData.flat_discount);
-      formDataToSend.append('start_date', formData.start_date || "");
-      formDataToSend.append('end_date', formData.end_date || "");
-      formDataToSend.append('is_flash_sale', formData.is_flash_sale);
-      formDataToSend.append('promotional_text', formData.promotional_text || "");
-      
-      // Append image if selected
-      if (imageFile) {
-        formDataToSend.append('offer_image', imageFile);
-      }
-
       const response = await fetch(url, {
-        method: method,
-        body: formDataToSend
+        method,
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
       });
-
+      
       if (response.ok) {
-        alert(editingOffer ? "Offer updated successfully!" : "Offer created successfully!");
+        const result = await response.json();
+        console.log("✅ Success:", result);
+        
+        await fetchOffers();
         setShowModal(false);
-        fetchOffers();
+        setForm({
+          offer_name: "",
+          discount_percent: "",
+          flat_discount: "",
+          start_date: "",
+          end_date: "",
+          is_flash_sale: false,
+          promotional_text: ""
+        });
+        setImage(null);
+        setExistingImage(null);
+        setEditingId(null);
+        
+        alert(`Offer ${editingId ? "updated" : "added"} successfully!`);
       } else {
-        const error = await response.json();
-        alert("Failed to save offer: " + (error.error || "Unknown error"));
+        const contentType = response.headers.get("content-type");
+        let errorMessage = "Failed to save offer";
+        
+        try {
+          if (contentType && contentType.includes("application/json")) {
+            const errorData = await response.json();
+            console.error("❌ Error response:", errorData);
+            errorMessage = errorData.message || errorData.error || errorMessage;
+          } else {
+            const errorText = await response.text();
+            console.error("❌ Error response:", errorText);
+            errorMessage = "Internal Server Error";
+          }
+        } catch (e) {
+          console.error("Error parsing response:", e);
+        }
+        
+        alert(errorMessage);
       }
     } catch (error) {
-      console.error("Error:", error);
-      alert("Error saving offer");
+      console.error("❌ Network error:", error);
+      alert(`Error saving offer: ${error.message}`);
     }
   };
 
-  const deleteOffer = async (offerId) => {
-    if (!confirm("Are you sure you want to delete this offer?")) return;
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/offers/${offerId}`,
-        { method: "DELETE" }
-      );
-      if (response.ok) {
-        fetchOffers();
-        alert("Offer deleted successfully!");
-      } else {
-        alert("Failed to delete offer");
+const deleteOffer = async (offerId) => {
+  if (!confirm("Are you sure you want to delete this offer?")) return;
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/offers/${offerId}`, { 
+      method: "DELETE" 
+    });
+    
+    if (response.ok) {
+      await fetchOffers();
+      alert("Offer deleted successfully!");
+    } else {
+      // Get the actual error message from the server
+      const contentType = response.headers.get("content-type");
+      let errorMessage = "Failed to delete offer";
+      
+      try {
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await response.json();
+          // console.error("Delete error:", errorData);
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } else {
+          const errorText = await response.text();
+          console.error("Delete error (text):", errorText);
+          errorMessage = errorText || errorMessage;
+        }
+      } catch (parseError) {
+        console.error("Error parsing response:", parseError);
       }
-    } catch (error) {
-      console.error("Error:", error);
-      alert("Error deleting offer");
+      
+      alert(`Error: ${errorMessage}`);
     }
-  };
+  } catch (error) {
+    console.error("Network error:", error);
+    alert(`Network error: ${error.message}`);
+  }
+};
 
-  // Helper function to check if an offer is currently active
   const isOfferActive = (offer) => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -224,14 +294,8 @@ export default function AdminOffersPage() {
 
   if (loading) {
     return (
-      <div style={{ display: "flex", minHeight: "100vh", overflow: "hidden" }}>
-        <AdminSidebar />
-        <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px" }}>
-          <div style={{ textAlign: "center" }}>
-            <h2 style={{ fontSize: "clamp(1.25rem, 4vw, 1.75rem)" }}>Loading Offers...</h2>
-            <p style={{ fontSize: "clamp(0.875rem, 3vw, 1rem)" }}>Please wait while we fetch the data</p>
-          </div>
-        </div>
+      <div style={{ display: "flex", minHeight: "100vh", overflow: "hidden", justifyContent: "center", alignItems: "center" }}>
+        <h2>Loading Offers...</h2>
       </div>
     );
   }
@@ -269,13 +333,12 @@ export default function AdminOffersPage() {
         <div style={{
           position: "fixed",
           zIndex: 999,
-          display: isMobile && !isMobileMenuOpen ? "none" : "block"
         }}>
           <AdminSidebar />
         </div>
       )}
 
-      {/* Overlay for mobile menu */}
+      {/* Overlay */}
       {isMobile && isMobileMenuOpen && (
         <div 
           onClick={() => setIsMobileMenuOpen(false)}
@@ -317,7 +380,7 @@ export default function AdminOffersPage() {
             overflowY: "auto"
           }}>
             <h2 style={{ marginTop: 0, marginBottom: "20px" }}>
-              {editingOffer ? "Edit Offer" : "Add New Offer"}
+              {editingId ? "Edit Offer" : "Add New Offer"}
             </h2>
             
             <form onSubmit={handleSubmit}>
@@ -328,8 +391,8 @@ export default function AdminOffersPage() {
                 <input
                   type="text"
                   name="offer_name"
-                  value={formData.offer_name}
-                  onChange={handleFormChange}
+                  value={form.offer_name}
+                  onChange={handleInput}
                   required
                   style={{
                     width: "100%",
@@ -349,8 +412,8 @@ export default function AdminOffersPage() {
                   <input
                     type="number"
                     name="discount_percent"
-                    value={formData.discount_percent}
-                    onChange={handleFormChange}
+                    value={form.discount_percent}
+                    onChange={handleInput}
                     min="0"
                     max="100"
                     step="0.01"
@@ -371,8 +434,8 @@ export default function AdminOffersPage() {
                   <input
                     type="number"
                     name="flat_discount"
-                    value={formData.flat_discount}
-                    onChange={handleFormChange}
+                    value={form.flat_discount}
+                    onChange={handleInput}
                     min="0"
                     step="0.01"
                     style={{
@@ -394,8 +457,8 @@ export default function AdminOffersPage() {
                   <input
                     type="date"
                     name="start_date"
-                    value={formData.start_date}
-                    onChange={handleFormChange}
+                    value={form.start_date}
+                    onChange={handleInput}
                     style={{
                       width: "100%",
                       padding: "8px 12px",
@@ -413,8 +476,8 @@ export default function AdminOffersPage() {
                   <input
                     type="date"
                     name="end_date"
-                    value={formData.end_date}
-                    onChange={handleFormChange}
+                    value={form.end_date}
+                    onChange={handleInput}
                     style={{
                       width: "100%",
                       padding: "8px 12px",
@@ -432,8 +495,8 @@ export default function AdminOffersPage() {
                 </label>
                 <textarea
                   name="promotional_text"
-                  value={formData.promotional_text}
-                  onChange={handleFormChange}
+                  value={form.promotional_text}
+                  onChange={handleInput}
                   rows="3"
                   style={{
                     width: "100%",
@@ -463,11 +526,15 @@ export default function AdminOffersPage() {
                     fontSize: "14px"
                   }}
                 />
-                {imagePreview && (
-                  <div style={{ marginTop: "10px" }}>
+                <div style={{ marginTop: "10px" }}>
+                  {image ? (
+                    <span style={{ fontSize: "13px", color: "#666" }}>
+                      Selected: {image.name}
+                    </span>
+                  ) : existingImage ? (
                     <img 
-                      src={imagePreview} 
-                      alt="Offer preview"
+                      src={existingImage} 
+                      alt="offer" 
                       style={{
                         width: "100%",
                         maxWidth: "300px",
@@ -476,8 +543,8 @@ export default function AdminOffersPage() {
                         border: "1px solid #ddd"
                       }}
                     />
-                  </div>
-                )}
+                  ) : null}
+                </div>
               </div>
 
               <div style={{ marginBottom: "20px" }}>
@@ -485,8 +552,8 @@ export default function AdminOffersPage() {
                   <input
                     type="checkbox"
                     name="is_flash_sale"
-                    checked={formData.is_flash_sale}
-                    onChange={handleFormChange}
+                    checked={form.is_flash_sale}
+                    onChange={handleInput}
                     style={{ width: "18px", height: "18px", cursor: "pointer" }}
                   />
                   <span style={{ fontWeight: "500" }}>This is a Flash Sale</span>
@@ -521,7 +588,7 @@ export default function AdminOffersPage() {
                     fontSize: "14px"
                   }}
                 >
-                  {editingOffer ? "Update Offer" : "Create Offer"}
+                  {editingId ? "Update Offer" : "Create Offer"}
                 </button>
               </div>
             </form>
@@ -534,7 +601,7 @@ export default function AdminOffersPage() {
         padding: "clamp(15px, 3vw, 30px)", 
         overflowY: "auto",
         width: "100%",
-        marginLeft: !isMobile ? "300px" : "0",
+        marginLeft: !isMobile ? "280px" : "0",
         marginTop: isMobile ? "60px" : "0"
       }}>
         <div style={{ 
@@ -629,364 +696,160 @@ export default function AdminOffersPage() {
           {/* Statistics */}
           <div style={{
             display: "grid",
-            gridTemplateColumns: isMobile 
-              ? "1fr" 
-              : window.innerWidth < 1024 
-                ? "repeat(2, 1fr)" 
-                : "repeat(3, 1fr)",
+            gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
             gap: "15px",
             marginBottom: "20px",
           }}>
             <div style={{ padding: "15px", background: "#e3f2fd", borderRadius: "8px" }}>
-              <h3 style={{ 
-                margin: 0, 
-                color: "#1976d2",
-                fontSize: "clamp(0.875rem, 3vw, 1rem)"
-              }}>
+              <h3 style={{ margin: 0, color: "#1976d2", fontSize: "clamp(0.875rem, 3vw, 1rem)" }}>
                 Total Offers
               </h3>
-              <p style={{ 
-                margin: "5px 0 0 0", 
-                fontSize: "clamp(1.25rem, 5vw, 1.5rem)", 
-                fontWeight: "bold" 
-              }}>
+              <p style={{ margin: "5px 0 0 0", fontSize: "clamp(1.25rem, 5vw, 1.5rem)", fontWeight: "bold" }}>
                 {filteredOffers.length}
               </p>
             </div>
             <div style={{ padding: "15px", background: "#f3e5f5", borderRadius: "8px" }}>
-              <h3 style={{ 
-                margin: 0, 
-                color: "#7b1fa2",
-                fontSize: "clamp(0.875rem, 3vw, 1rem)"
-              }}>
+              <h3 style={{ margin: 0, color: "#7b1fa2", fontSize: "clamp(0.875rem, 3vw, 1rem)" }}>
                 Active Now
               </h3>
-              <p style={{ 
-                margin: "5px 0 0 0", 
-                fontSize: "clamp(1.25rem, 5vw, 1.5rem)", 
-                fontWeight: "bold" 
-              }}>
+              <p style={{ margin: "5px 0 0 0", fontSize: "clamp(1.25rem, 5vw, 1.5rem)", fontWeight: "bold" }}>
                 {activeOffersCount}
               </p>
             </div>
-            <div style={{ 
-              padding: "15px", 
-              background: "#fff3e0", 
-              borderRadius: "8px",
-              gridColumn: !isMobile && window.innerWidth < 1024 ? "span 2" : "auto"
-            }}>
-              <h3 style={{ 
-                margin: 0, 
-                color: "#f57c00",
-                fontSize: "clamp(0.875rem, 3vw, 1rem)"
-              }}>
+            <div style={{ padding: "15px", background: "#fff3e0", borderRadius: "8px" }}>
+              <h3 style={{ margin: 0, color: "#f57c00", fontSize: "clamp(0.875rem, 3vw, 1rem)" }}>
                 Flash Sales
               </h3>
-              <p style={{ 
-                margin: "5px 0 0 0", 
-                fontSize: "clamp(1.25rem, 5vw, 1.5rem)", 
-                fontWeight: "bold" 
-              }}>
+              <p style={{ margin: "5px 0 0 0", fontSize: "clamp(1.25rem, 5vw, 1.5rem)", fontWeight: "bold" }}>
                 {flashSalesCount}
               </p>
             </div>
           </div>
 
-          {/* Mobile Card View */}
-          {isMobile ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-              {currentOffers.length === 0 ? (
-                <div style={{ 
-                  textAlign: "center", 
-                  padding: "40px 20px",
-                  background: "#f9f9f9",
-                  borderRadius: "8px"
-                }}>
-                  {searchTerm ? "No offers found matching your search" : "No offers found in database"}
-                </div>
-              ) : (
-                currentOffers.map((offer, index) => {
-                  const isActive = isOfferActive(offer);
-                  return (
-                    <div 
-                      key={offer.offer_id || offer.id || index}
-                      style={{
-                        padding: "15px",
-                        background: "#fff",
-                        border: isActive ? "2px solid #7b1fa2" : "1px solid #ddd",
-                        borderRadius: "8px",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
-                      }}
-                    >
-                      {offer.offer_image && (
-                        <img 
-                          src={`${API_BASE_URL}${offer.offer_image}`}
-                          alt={offer.offer_name}
-                          style={{
-                            width: "100%",
-                            height: "120px",
-                            objectFit: "cover",
-                            borderRadius: "8px",
-                            marginBottom: "10px"
-                          }}
-                        />
-                      )}
-                      
-                      <div style={{ 
-                        display: "flex", 
-                        justifyContent: "space-between",
-                        alignItems: "start",
-                        marginBottom: "10px"
-                      }}>
-                        <h3 style={{ 
-                          margin: 0, 
-                          fontSize: "1.1rem",
-                          fontWeight: "600",
-                          flex: 1
-                        }}>
-                          {offer.offer_name || "N/A"}
-                        </h3>
-                        <div style={{ display: "flex", gap: "5px", marginLeft: "10px" }}>
-                          {isActive && (
-                            <span style={{ 
-                              color: "#fff", 
-                              background: "#7b1fa2", 
-                              padding: "3px 10px", 
-                              borderRadius: "8px",
-                              fontSize: "0.75rem",
-                              whiteSpace: "nowrap"
-                            }}>
-                              ACTIVE
-                            </span>
-                          )}
-                          {(offer.is_flash_sale === 1 || offer.is_flash_sale === true) && (
-                            <span style={{ 
-                              color: "#fff", 
-                              background: "#e53935", 
-                              padding: "3px 10px", 
-                              borderRadius: "8px",
-                              fontSize: "0.75rem",
-                              whiteSpace: "nowrap"
-                            }}>
-                              FLASH
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div style={{ 
-                        display: "grid", 
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: "10px",
-                        marginBottom: "10px",
-                        fontSize: "0.875rem"
-                      }}>
-                        <div>
-                          <strong>Discount:</strong> {offer.discount_percent != null ? offer.discount_percent + "%" : "—"}
-                        </div>
-                        <div>
-                          <strong>Flat:</strong> {offer.flat_discount != null ? "₹" + offer.flat_discount : "—"}
-                        </div>
-                        <div>
-                          <strong>Start:</strong> {offer.start_date ? offer.start_date.slice(0, 10) : "—"}
-                        </div>
-                        <div>
-                          <strong>End:</strong> {offer.end_date ? offer.end_date.slice(0, 10) : "—"}
-                        </div>
-                      </div>
-                      
-                      {offer.promotional_text && (
-                        <div style={{ 
-                          padding: "8px",
-                          background: "#f5f5f5",
-                          borderRadius: "4px",
-                          marginBottom: "10px",
-                          fontSize: "0.813rem",
-                          color: "#666"
-                        }}>
-                          {offer.promotional_text}
-                        </div>
-                      )}
-                      
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        <button
-                          onClick={() => handleEditOffer(offer)}
-                          style={{
-                            flex: 1,
-                            padding: "8px 12px",
-                            background: "#2196f3",
-                            color: "white",
-                            border: "none",
-                            borderRadius: "4px",
-                            cursor: "pointer",
-                            fontSize: "0.875rem",
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => deleteOffer(offer.offer_id || offer.id)}
-                          style={{
-                            flex: 1,
-                            padding: "8px 12px",
-                            background: "#f44336",
-                            color: "white",
-                            border: "none",
-                            borderRadius: "4px",
-                            cursor: "pointer",
-                            fontSize: "0.875rem",
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          ) : (
-            /* Desktop Table View */
-            <div style={{
-              overflowX: "auto",
-              overflowY: "auto",
-              maxHeight: "500px",
-              border: "1px solid #ddd",
-              borderRadius: "4px"
-            }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "1100px" }}>
-                <thead>
+          {/* Table */}
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "1000px" }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>S.No</th>
+                  <th style={thStyle}>Image</th>
+                  <th style={thStyle}>Offer Name</th>
+                  <th style={thStyle}>Discount %</th>
+                  <th style={thStyle}>Flat Discount</th>
+                  <th style={thStyle}>Start Date</th>
+                  <th style={thStyle}>End Date</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Promo Text</th>
+                  <th style={thStyle}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentOffers.length === 0 ? (
                   <tr>
-                    <th style={thStyle}>S.No</th>
-                    <th style={thStyle}>Image</th>
-                    <th style={thStyle}>Offer Name</th>
-                    <th style={thStyle}>Discount %</th>
-                    <th style={thStyle}>Flat Discount</th>
-                    <th style={thStyle}>Start Date</th>
-                    <th style={thStyle}>End Date</th>
-                    <th style={thStyle}>Status</th>
-                    <th style={thStyle}>Promo Text</th>
-                    <th style={thStyle}>Actions</th>
+                    <td colSpan="10" style={{ ...tdStyle, textAlign: "center", padding: "40px" }}>
+                      {searchTerm ? "No offers found matching your search" : "No offers found"}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {currentOffers.length === 0 ? (
-                    <tr>
-                      <td colSpan="10" style={{ ...tdStyle, textAlign: "center", padding: "40px" }}>
-                        {searchTerm ? "No offers found matching your search" : "No offers found in database"}
-                      </td>
-                    </tr>
-                  ) : (
-                    currentOffers.map((offer, index) => {
-                      const isActive = isOfferActive(offer);
-                      return (
-                        <tr key={offer.offer_id || offer.id || index} style={{
-                          background: index % 2 === 0 ? "#fff" : "#f9f9f9"
-                        }}>
-                          <td style={tdStyle}>{(currentPage - 1) * resultsPerPage + index + 1}</td>
-                          <td style={tdStyle}>
-                            {offer.offer_image ? (
-                              <img 
-                                src={`${API_BASE_URL}${offer.offer_image}`}
-                                alt={offer.offer_name}
-                                style={{
-                                  width: "80px",
-                                  height: "50px",
-                                  objectFit: "cover",
-                                  borderRadius: "4px",
-                                  border: "1px solid #ddd"
-                                }}
-                                onError={(e) => {
-                                  e.target.src = '/images/placeholder-offer.jpg';
-                                }}
-                              />
-                            ) : (
-                              <span style={{ color: "#999", fontSize: "12px" }}>No image</span>
+                ) : (
+                  currentOffers.map((offer, index) => {
+                    const isActive = isOfferActive(offer);
+                    return (
+                      <tr key={offer.offer_id || index}>
+                        <td style={tdStyle}>{(currentPage - 1) * resultsPerPage + index + 1}</td>
+                        <td style={tdStyle}>
+                          {offer.offer_image ? (
+                            <img 
+                              src={offer.offer_image}
+                              alt={offer.offer_name}
+                              style={{
+                                width: "80px",
+                                height: "50px",
+                                objectFit: "cover",
+                                borderRadius: "4px",
+                                border: "1px solid #ddd"
+                              }}
+                            />
+                          ) : (
+                            <span style={{ color: "#999", fontSize: "12px" }}>No image</span>
+                          )}
+                        </td>
+                        <td style={tdStyle}>{offer.offer_name || "N/A"}</td>
+                        <td style={tdStyle}>{offer.discount_percent != null ? offer.discount_percent + "%" : "—"}</td>
+                        <td style={tdStyle}>{offer.flat_discount != null ? "₹" + offer.flat_discount : "—"}</td>
+                        <td style={tdStyle}>{offer.start_date ? offer.start_date.slice(0, 10) : "—"}</td>
+                        <td style={tdStyle}>{offer.end_date ? offer.end_date.slice(0, 10) : "—"}</td>
+                        <td style={tdStyle}>
+                          <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
+                            {isActive && (
+                              <span style={{ 
+                                color: "#fff", 
+                                background: "#7b1fa2", 
+                                padding: "3px 10px", 
+                                borderRadius: "8px",
+                                fontSize: "0.75rem"
+                              }}>
+                                ACTIVE
+                              </span>
                             )}
-                          </td>
-                          <td style={tdStyle}>{offer.offer_name || "N/A"}</td>
-                          <td style={tdStyle}>{offer.discount_percent != null ? offer.discount_percent + "%" : "—"}</td>
-                          <td style={tdStyle}>{offer.flat_discount != null ? "₹" + offer.flat_discount : "—"}</td>
-                          <td style={tdStyle}>{offer.start_date ? offer.start_date.slice(0, 10) : "—"}</td>
-                          <td style={tdStyle}>{offer.end_date ? offer.end_date.slice(0, 10) : "—"}</td>
-                          <td style={tdStyle}>
-                            <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
-                              {isActive && (
-                                <span style={{ 
-                                  color: "#fff", 
-                                  background: "#7b1fa2", 
-                                  padding: "3px 10px", 
-                                  borderRadius: "8px",
-                                  fontSize: "0.75rem",
-                                  whiteSpace: "nowrap"
-                                }}>
-                                  ACTIVE
-                                </span>
-                              )}
-                              {(offer.is_flash_sale === 1 || offer.is_flash_sale === true) && (
-                                <span style={{ 
-                                  color: "#fff", 
-                                  background: "#e53935", 
-                                  padding: "3px 10px", 
-                                  borderRadius: "8px",
-                                  fontSize: "0.75rem",
-                                  whiteSpace: "nowrap"
-                                }}>
-                                  FLASH
-                                </span>
-                              )}
-                              {!isActive && !(offer.is_flash_sale === 1 || offer.is_flash_sale === true) && (
-                                <span style={{ color: "#888" }}>Inactive</span>
-                              )}
-                            </div>
-                          </td>
-                          <td style={tdStyle}>
-                            <div style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {offer.promotional_text || "—"}
-                            </div>
-                          </td>
-                          <td style={tdStyle}>
-                            <div style={{ display: "flex", gap: "8px" }}>
-                              <button
-                                onClick={() => handleEditOffer(offer)}
-                                style={{
-                                  padding: "6px 12px",
-                                  background: "#2196f3",
-                                  color: "white",
-                                  border: "none",
-                                  borderRadius: "4px",
-                                  cursor: "pointer",
-                                  fontSize: "12px",
-                                }}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => deleteOffer(offer.offer_id || offer.id)}
-                                style={{
-                                  padding: "6px 12px",
-                                  background: "#f44336",
-                                  color: "white",
-                                  border: "none",
-                                  borderRadius: "4px",
-                                  cursor: "pointer",
-                                  fontSize: "12px",
-                                }}
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+                            {(offer.is_flash_sale === 1 || offer.is_flash_sale === true) && (
+                              <span style={{ 
+                                color: "#fff", 
+                                background: "#e53935", 
+                                padding: "3px 10px", 
+                                borderRadius: "8px",
+                                fontSize: "0.75rem"
+                              }}>
+                                FLASH
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>
+                          <div style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {offer.promotional_text || "—"}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>
+                          <div style={{ display: "flex", gap: "8px" }}>
+                            <button
+                              onClick={() => handleEdit(offer)}
+                              style={{
+                                padding: "6px 12px",
+                                background: "#2196f3",
+                                color: "white",
+                                border: "none",
+                                borderRadius: "4px",
+                                cursor: "pointer",
+                                fontSize: "12px",
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => deleteOffer(offer.offer_id)}
+                              style={{
+                                padding: "6px 12px",
+                                background: "#f44336",
+                                color: "white",
+                                border: "none",
+                                borderRadius: "4px",
+                                cursor: "pointer",
+                                fontSize: "12px",
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
 
-          {/* Pagination Row */}
+          {/* Pagination */}
           <div style={{ display: "flex", justifyContent: "center", alignItems: "center", margin: "20px 0", gap: 20 }}>
             <button
               onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}

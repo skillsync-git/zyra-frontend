@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import AdminSidebar from "../components/adminsidebar";
+import { uploadMultipleImages } from "@/utils/fbupload";
 
 const thStyle = {
   background: "#eaeaea",
@@ -142,66 +143,172 @@ export default function AdminProductsPage() {
   const handleInput = (e) => setForm({ ...form, [e.target.name]: e.target.value });
   const handleImageChange = (e) => setImages(Array.from(e.target.files).slice(0, 4));
 
+// const handleSubmit = async (e) => {
+//   e.preventDefault();
+  
+
+//   try{
+
+//     console.log(`Images: ${images}`);
+//     const uploadedUrls = await uploadMultipleImages(images, "products");
+    
+//     console.log(`uploadedUrls : ${uploadedUrls.length}`);
+
+//   }catch(e){
+//     console.error(e);
+//   }
+
+//   const formData = new FormData();
+  
+//   // Append all non-empty form fields
+//   for (let key in form) {
+//     if (form[key] !== '' && form[key] != null) {
+//       formData.append(key, form[key]);
+//     }
+//   }
+  
+//   // Handle images for updates
+//   if (editingId) {
+//     if (existingImages.length > 0 && images.length === 0) {
+//       formData.append("existing_images", existingImages.join(","));
+//     }
+//   }
+  
+//   // Append new images
+//   images.forEach((img) => formData.append("images", img));
+  
+//   // DEBUG: Log what's being sent
+//   console.log("=== FormData Contents ===");
+//   for (let pair of formData.entries()) {
+//     console.log(pair[0] + ':', pair[1]);
+//   }
+//   console.log("========================");
+  
+//   try {
+//     const method = editingId ? "PUT" : "POST";
+//     const url = editingId
+//       ? `https://api-xmg2fjjbya-uc.a.run.app/api/products/${editingId}`
+//       : "https://api-xmg2fjjbya-uc.a.run.app/api/products";
+    
+//     const response = await fetch(url, { 
+//       method, 
+//       body: formData 
+//     });
+    
+//     if (response.ok) {
+//       await fetchProducts();
+//       setForm(initialFormState);
+//       setShowForm(false);
+//       setImages([]);
+//       setExistingImages([]);
+//       setEditingId(null);
+//       alert(`Product ${editingId ? "updated" : "added"} successfully!`);
+//     } else {
+//       const contentType = response.headers.get("content-type");
+//       let errorMessage = "Internal Server Error";
+      
+//       try {
+//         if (contentType && contentType.includes("application/json")) {
+//           const errorData = await response.json();
+//           console.error("Error response:", errorData);
+//           errorMessage = errorData.message || errorData.error || errorMessage;
+//         } else {
+//           const errorText = await response.text();
+//           console.error("Error response (HTML):", errorText);
+//           errorMessage = "Internal Server Error - Check backend logs";
+//         }
+//       } catch (e) {
+//         console.error("Error parsing response:", e);
+//       }
+      
+//       alert(errorMessage);
+//     }
+//   } catch (error) {
+//     console.error("Network error:", error);
+//     alert(`Error saving product: ${error.message}`);
+//   }
+// };
+
 const handleSubmit = async (e) => {
   e.preventDefault();
   
-  const formData = new FormData();
-  
-  // Append all non-empty form fields
-  for (let key in form) {
-    if (form[key] !== '' && form[key] != null) {
-      formData.append(key, form[key]);
-    }
-  }
-  
-  // Handle images for updates
-  if (editingId) {
-    if (existingImages.length > 0 && images.length === 0) {
-      formData.append("existing_images", existingImages.join(","));
-    }
-  }
-  
-  // Append new images
-  images.forEach((img) => formData.append("images", img));
-  
-  // DEBUG: Log what's being sent
-  console.log("=== FormData Contents ===");
-  for (let pair of formData.entries()) {
-    console.log(pair[0] + ':', pair[1]);
-  }
-  console.log("========================");
-  
   try {
+    let imageUrls = [];
+    
+    // Upload new images to Firebase if any
+    if (images.length > 0) {
+      console.log(`Uploading ${images.length} images to Firebase...`);
+      imageUrls = await uploadMultipleImages(images, "products");
+      console.log(`✅ Uploaded ${imageUrls.length} images:`, imageUrls);
+    }
+    
+    // For updates: keep existing images if no new images uploaded
+    if (editingId && images.length === 0 && existingImages.length > 0) {
+      imageUrls = existingImages;
+      console.log(`Using existing images:`, imageUrls);
+    }
+    
+    // Prepare payload with image URLs
+    const payload = {
+      name: form.name,
+      category_id: form.category_id,
+      price: form.price,
+      stock_quantity: form.stock_quantity,
+      description: form.description,
+      key_features: form.key_features || null,
+      offer_id: form.offer_id || null,
+      image_urls: imageUrls // Send array of Firebase URLs
+    };
+    
+    // Remove empty/null values
+    Object.keys(payload).forEach(key => {
+      if (payload[key] === '' || payload[key] === null) {
+        delete payload[key];
+      }
+    });
+    
+    console.log("=== Payload to API ===");
+    console.log(JSON.stringify(payload, null, 2));
+    console.log("======================");
+    
+    // Send JSON payload to API
     const method = editingId ? "PUT" : "POST";
     const url = editingId
       ? `https://api-xmg2fjjbya-uc.a.run.app/api/products/${editingId}`
       : "https://api-xmg2fjjbya-uc.a.run.app/api/products";
     
-    const response = await fetch(url, { 
-      method, 
-      body: formData 
+    const response = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
     });
     
     if (response.ok) {
+      const result = await response.json();
+      console.log("✅ Success:", result);
+      
       await fetchProducts();
       setForm(initialFormState);
       setShowForm(false);
       setImages([]);
       setExistingImages([]);
       setEditingId(null);
+      
       alert(`Product ${editingId ? "updated" : "added"} successfully!`);
     } else {
       const contentType = response.headers.get("content-type");
-      let errorMessage = "Internal Server Error";
+      let errorMessage = "Failed to save product";
       
       try {
         if (contentType && contentType.includes("application/json")) {
           const errorData = await response.json();
-          console.error("Error response:", errorData);
+          console.error("❌ Error response:", errorData);
           errorMessage = errorData.message || errorData.error || errorMessage;
         } else {
           const errorText = await response.text();
-          console.error("Error response (HTML):", errorText);
+          console.error("❌ Error response (HTML):", errorText);
           errorMessage = "Internal Server Error - Check backend logs";
         }
       } catch (e) {
@@ -211,10 +318,11 @@ const handleSubmit = async (e) => {
       alert(errorMessage);
     }
   } catch (error) {
-    console.error("Network error:", error);
+    console.error("❌ Network error:", error);
     alert(`Error saving product: ${error.message}`);
   }
 };
+
 
   const handleEdit = (item) => {
     setEditingId(item.product_id);
@@ -449,12 +557,20 @@ const handleSubmit = async (e) => {
                             color: stockStatus.color, backgroundColor: stockStatus.bgColor, display: "inline-block",
                           }}>{stockStatus.text}</span>
                         </td>
+
                         <td style={tdStyle}>
                           {Array.isArray(item.images) && item.images.map((url, i) => (
-                            <img key={i} src={`https://api-xmg2fjjbya-uc.a.run.app${url}`} alt="img" width={40} height={40}
-                              style={{ marginRight: 4, borderRadius: 4, objectFit: "cover" }} />
+                          <img 
+                            key={i} 
+                            src={url} 
+                            alt="img" 
+                            width={40} 
+                            height={40}
+                            style={{ marginRight: 4, borderRadius: 4, objectFit: "cover" }} 
+                          />
                           ))}
                         </td>
+                        
                         <td style={tdStyle}>{item.description}</td>
                         <td style={tdStyle}>{item.key_features}</td>
                         <td style={tdStyle}>{offer ? offer.offer_name : "—"}</td>
@@ -606,6 +722,7 @@ const handleSubmit = async (e) => {
                       value={form.price}
                       required
                       min="0"
+                      step="0.01"
                       onChange={handleInput}
                       style={{
                         width: "100%",

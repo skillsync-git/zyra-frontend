@@ -80,50 +80,80 @@ export default function AdminGiftCategoriesPage() {
   // Add or update gift category
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const data = {
-      name: form.name,
-      description: form.description,
-    };
-    let url = "https://api-xmg2fjjbya-uc.a.run.app/api/giftcategories";
-    let method = "POST";
-    if (editCategory) {
-      url = `https://api-xmg2fjjbya-uc.a.run.app/api/giftcategories/${editCategory.gift_category_id}`;
-      method = "PUT";
+    
+    try {
+      // Prepare payload
+      const payload = {
+        name: form.name,
+        description: form.description
+      };
+
+      // Remove empty values
+      Object.keys(payload).forEach(key => {
+        if (payload[key] === '' || payload[key] === null) {
+          delete payload[key];
+        }
+      });
+
+      console.log("=== Payload to API ===");
+      console.log(JSON.stringify(payload, null, 2));
+
+      let url = "https://api-xmg2fjjbya-uc.a.run.app/api/giftcategories";
+      let method = "POST";
+      
+      if (editCategory) {
+        url = `https://api-xmg2fjjbya-uc.a.run.app/api/giftcategories/${editCategory.gift_category_id}`;
+        method = "PUT";
+      }
+
+      const response = await fetch(url, { 
+        method, 
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload) 
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("✅ Success:", result);
+        
+        setShowModal(false);
+        fetchCategories();
+        
+        alert(`Category ${editCategory ? "updated" : "added"} successfully!`);
+      } else {
+        const errorData = await response.json();
+        console.error("❌ Error response:", errorData);
+        alert(errorData.error || "Failed to save category");
+      }
+    } catch (error) {
+      console.error("❌ Error:", error);
+      alert(`Error saving category: ${error.message}`);
     }
-    await fetch(url, { 
-      method, 
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data) 
-    });
-    setShowModal(false);
-    fetchCategories();
   };
 
-// Delete a gift category
-const deleteCategory = async (categoryId) => {
-  if (!confirm("Are you sure you want to delete this category? This may affect gift items using this category.")) return;
-  
-  try {
-    const response = await fetch(`https://api-xmg2fjjbya-uc.a.run.app/api/giftcategories/${categoryId}`, { 
-      method: "DELETE" 
-    });
+  // Delete a gift category
+  const deleteCategory = async (categoryId) => {
+    if (!confirm("Are you sure you want to delete this category? This may affect gift items using this category.")) return;
     
-    const data = await response.json();
-    
-    if (!response.ok) {
-      // Show the error message from server
-      alert(data.error || "Failed to delete category");
-      return;
+    try {
+      const response = await fetch(`https://api-xmg2fjjbya-uc.a.run.app/api/giftcategories/${categoryId}`, { 
+        method: "DELETE" 
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        alert(data.error || "Failed to delete category");
+        return;
+      }
+      
+      alert("Category deleted successfully!");
+      fetchCategories();
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert("Error deleting category. Please try again.");
     }
-    
-    // Success - refresh the list
-    alert("Category deleted successfully!");
-    fetchCategories();
-  } catch (error) {
-    console.error("Delete error:", error);
-    alert("Error deleting category. Please try again.");
-  }
-};
+  };
 
   // For form fields change
   const handleFormChange = (e) => {
@@ -378,7 +408,6 @@ const deleteCategory = async (categoryId) => {
                 <thead>
                   <tr>
                     <th style={thStyle}>S.No</th>
-                    {/* <th style={thStyle}>Category ID</th> */}
                     <th style={thStyle}>Category Name</th>
                     <th style={thStyle}>Description</th>
                     <th style={thStyle}>Actions</th>
@@ -387,7 +416,7 @@ const deleteCategory = async (categoryId) => {
                 <tbody>
                   {currentCategories.length === 0 ? (
                     <tr>
-                      <td colSpan="5" style={{ ...tdStyle, textAlign: "center", padding: "40px" }}>
+                      <td colSpan="4" style={{ ...tdStyle, textAlign: "center", padding: "40px" }}>
                         {searchTerm ? "No categories found matching your search" : "No categories found in database"}
                       </td>
                     </tr>
@@ -396,7 +425,6 @@ const deleteCategory = async (categoryId) => {
                       <tr key={cat.gift_category_id || index}
                         style={{ background: index % 2 === 0 ? "#fff" : "#f9f9f9" }}>
                         <td style={tdStyle}>{(currentPage - 1) * resultsPerPage + index + 1}</td>
-                        {/* <td style={{ ...tdStyle, fontWeight: "600" }}>{cat.gift_category_id}</td> */}
                         <td style={{ ...tdStyle, fontWeight: "600" }}>{cat.name || "N/A"}</td>
                         <td style={{
                           ...tdStyle,
@@ -490,13 +518,31 @@ const deleteCategory = async (categoryId) => {
           {/* Modal for Add/Edit category */}
           {showModal && (
             <div style={{
-              position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(0,0,0,0.37)", zIndex: 1000,
-              display: "flex", alignItems: "center", justifyContent: "center"
+              position: "fixed", 
+              top: 0, 
+              left: 0, 
+              width: "100vw", 
+              height: "100vh", 
+              background: "rgba(0,0,0,0.37)", 
+              zIndex: 1000,
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center",
+              overflow: "auto"
             }}>
               <form onSubmit={handleSubmit} style={{
-                background: "#fff", padding: 32, borderRadius: 8, minWidth: 320, maxWidth: 500, boxShadow: "0 0 18px #0002", position: "relative"
+                background: "#fff", 
+                padding: 32, 
+                borderRadius: 8, 
+                minWidth: 320, 
+                maxWidth: 500, 
+                boxShadow: "0 0 18px #0002", 
+                position: "relative",
+                maxHeight: "90vh",
+                overflowY: "auto"
               }}>
                 <h3>{editCategory ? "Edit Category" : "Add Category"}</h3>
+                
                 <div style={{ margin: "12px 0" }}>
                   <label>Category Name</label>
                   <input
@@ -505,9 +551,16 @@ const deleteCategory = async (categoryId) => {
                     value={form.name}
                     onChange={handleFormChange}
                     required
-                    style={{ width: "100%", padding: 7, marginTop: 2, border: "1px solid #bbb", borderRadius: 4 }}
+                    style={{ 
+                      width: "100%", 
+                      padding: 7, 
+                      marginTop: 2, 
+                      border: "1px solid #bbb", 
+                      borderRadius: 4 
+                    }}
                   />
                 </div>
+
                 <div style={{ margin: "12px 0" }}>
                   <label>Description</label>
                   <textarea
@@ -515,9 +568,17 @@ const deleteCategory = async (categoryId) => {
                     value={form.description}
                     onChange={handleFormChange}
                     rows="4"
-                    style={{ width: "100%", padding: 7, marginTop: 2, border: "1px solid #bbb", borderRadius: 4, resize: "vertical" }}
+                    style={{ 
+                      width: "100%", 
+                      padding: 7, 
+                      marginTop: 2, 
+                      border: "1px solid #bbb", 
+                      borderRadius: 4, 
+                      resize: "vertical" 
+                    }}
                   />
                 </div>
+
                 <div style={{ marginTop: 18 }}>
                   <button type="submit" style={{
                     background: "#2563eb",
@@ -531,9 +592,20 @@ const deleteCategory = async (categoryId) => {
                   }}>
                     Save
                   </button>
-                  <button type="button" onClick={() => setShowModal(false)} style={{
-                    background: "#bbb", color: "#fff", border: "none", borderRadius: 5, padding: "8px 18px", cursor: "pointer"
-                  }}>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setShowModal(false);
+                    }} 
+                    style={{
+                      background: "#bbb", 
+                      color: "#fff", 
+                      border: "none", 
+                      borderRadius: 5, 
+                      padding: "8px 18px", 
+                      cursor: "pointer"
+                    }}
+                  >
                     Cancel
                   </button>
                 </div>

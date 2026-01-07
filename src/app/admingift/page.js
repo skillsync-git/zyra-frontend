@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import AdminSidebar from "../components/adminsidebar";
+import { uploadMultipleImages } from "@/utils/fbupload";
 
 // Styles
 const thStyle = {
@@ -38,9 +39,10 @@ export default function AdminGiftsPage() {
     gift_category_id: "",
     name: "",
     description: "",
-    image_file: null,
     price: "",
   });
+  const [image, setImage] = useState(null);
+  const [existingImage, setExistingImage] = useState("");
 
   // Responsive
   useEffect(() => {
@@ -80,52 +82,121 @@ export default function AdminGiftsPage() {
           gift_category_id: gift.gift_category_id || "",
           name: gift.name || "",
           description: gift.description || "",
-          image_file: null,
           price: gift.price || "",
         }
       : {
           gift_category_id: "",
           name: "",
           description: "",
-          image_file: null,
           price: "",
         }
     );
+    setExistingImage(gift?.image_url || "");
+    setImage(null);
     setShowModal(true);
+  };
+
+  // Handle image change
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    setImage(file || null);
   };
 
   // Add or update gift item
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const fd = new FormData();
-    fd.append("gift_category_id", form.gift_category_id);
-    fd.append("name", form.name);
-    fd.append("description", form.description);
-    fd.append("price", form.price);
-    if (form.image_file) fd.append("image", form.image_file);
-    let url = "https://api-xmg2fjjbya-uc.a.run.app/api/giftitems";
-    let method = "POST";
-    if (editGift) {
-      url = `https://api-xmg2fjjbya-uc.a.run.app/api/giftitems/${editGift.gift_item_id}`;
-      method = "PUT";
+    
+    try {
+      let imageUrl = existingImage;
+
+      // Upload new image to Firebase if selected
+      if (image) {
+        console.log(`Uploading image to Firebase...`);
+        const uploadedUrls = await uploadMultipleImages([image], "gift-items");
+        imageUrl = uploadedUrls[0];
+        console.log(`✅ Uploaded image:`, imageUrl);
+      }
+
+      // Prepare payload
+      const payload = {
+        gift_category_id: form.gift_category_id,
+        name: form.name,
+        description: form.description,
+        price: form.price,
+        image_url: imageUrl || null
+      };
+
+      // Remove empty values
+      Object.keys(payload).forEach(key => {
+        if (payload[key] === '' || payload[key] === null) {
+          delete payload[key];
+        }
+      });
+
+      console.log("=== Payload to API ===");
+      console.log(JSON.stringify(payload, null, 2));
+
+      let url = "https://api-xmg2fjjbya-uc.a.run.app/api/giftitems";
+      let method = "POST";
+      
+      if (editGift) {
+        url = `https://api-xmg2fjjbya-uc.a.run.app/api/giftitems/${editGift.gift_item_id}`;
+        method = "PUT";
+      }
+
+      const response = await fetch(url, { 
+        method, 
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload) 
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("✅ Success:", result);
+        
+        setShowModal(false);
+        setImage(null);
+        setExistingImage("");
+        fetchGifts();
+        
+        alert(`Gift item ${editGift ? "updated" : "added"} successfully!`);
+      } else {
+        const errorData = await response.json();
+        console.error("❌ Error response:", errorData);
+        alert(errorData.error || "Failed to save gift item");
+      }
+    } catch (error) {
+      console.error("❌ Error:", error);
+      alert(`Error saving gift item: ${error.message}`);
     }
-    await fetch(url, { method, body: fd });
-    setShowModal(false);
-    fetchGifts();
   };
 
   // Delete a gift item
   const deleteGift = async (giftItemId) => {
     if (!confirm("Are you sure you want to delete this gift item?")) return;
-    await fetch(`https://api-xmg2fjjbya-uc.a.run.app/api/giftitems/${giftItemId}`, { method: "DELETE" });
-    fetchGifts();
+    
+    try {
+      const response = await fetch(`https://api-xmg2fjjbya-uc.a.run.app/api/giftitems/${giftItemId}`, { 
+        method: "DELETE" 
+      });
+      
+      if (response.ok) {
+        alert("Gift item deleted successfully!");
+        fetchGifts();
+      } else {
+        const errorData = await response.json();
+        alert(errorData.error || "Failed to delete gift item");
+      }
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert("Error deleting gift item");
+    }
   };
 
   // For form fields change
   const handleFormChange = (e) => {
-    const { name, value, files } = e.target;
-    if (name === "image_file") setForm(f => ({ ...f, image_file: files[0] }));
-    else setForm(f => ({ ...f, [name]: value }));
+    const { name, value } = e.target;
+    setForm(f => ({ ...f, [name]: value }));
   };
 
   // Pagination & filtering
@@ -346,9 +417,9 @@ export default function AdminGiftsPage() {
                     </div>
                     {gift.image_url && (
                       <img
-                        src={`https://api-xmg2fjjbya-uc.a.run.app${gift.image_url}`}
+                        src={gift.image_url}
                         alt="Gift"
-                        style={{ width: 70, height: 70, objectFit: "cover", borderRadius: 4, marginBottom: 5 }}
+                        style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 6 }}
                       />
                     )}
                     <div style={{ fontSize: 14 }}>{gift.description || "N/A"}</div>
@@ -422,10 +493,9 @@ export default function AdminGiftsPage() {
                         <td style={tdStyle}>
                           {gift.image_url ? (
                             <img
-                              src={`https://api-xmg2fjjbya-uc.a.run.app${gift.image_url}`}
+                              src={gift.image_url}
                               alt="Gift"
                               style={{ width: "50px", height: "50px", objectFit: "cover", borderRadius: "4px" }}
-                              onError={(e) => { e.target.style.display = 'none' }}
                             />
                           ) : (
                             <span style={{ color: "#999" }}>No image</span>
@@ -526,13 +596,31 @@ export default function AdminGiftsPage() {
           {/* Modal for Add/Edit gift item */}
           {showModal && (
             <div style={{
-              position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(0,0,0,0.37)", zIndex: 1000,
-              display: "flex", alignItems: "center", justifyContent: "center"
+              position: "fixed", 
+              top: 0, 
+              left: 0, 
+              width: "100vw", 
+              height: "100vh", 
+              background: "rgba(0,0,0,0.37)", 
+              zIndex: 1000,
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center",
+              overflow: "auto"
             }}>
               <form onSubmit={handleSubmit} style={{
-                background: "#fff", padding: 32, borderRadius: 8, minWidth: 320, boxShadow: "0 0 18px #0002", position: "relative"
+                background: "#fff", 
+                padding: 32, 
+                borderRadius: 8, 
+                minWidth: 320, 
+                maxWidth: 500,
+                boxShadow: "0 0 18px #0002", 
+                position: "relative",
+                maxHeight: "90vh",
+                overflowY: "auto"
               }}>
                 <h3>{editGift ? "Edit Gift Item" : "Add Gift Item"}</h3>
+                
                 <div style={{ margin: "12px 0" }}>
                   <label>Category</label>
                   <select
@@ -548,6 +636,7 @@ export default function AdminGiftsPage() {
                     ))}
                   </select>
                 </div>
+
                 <div style={{ margin: "12px 0" }}>
                   <label>Gift Name</label>
                   <input
@@ -559,16 +648,18 @@ export default function AdminGiftsPage() {
                     style={{ width: "100%", padding: 7, marginTop: 2, border: "1px solid #bbb", borderRadius: 4 }}
                   />
                 </div>
+
                 <div style={{ margin: "12px 0" }}>
                   <label>Description</label>
-                  <input
-                    type="text"
+                  <textarea
                     name="description"
                     value={form.description}
                     onChange={handleFormChange}
-                    style={{ width: "100%", padding: 7, marginTop: 2, border: "1px solid #bbb", borderRadius: 4 }}
+                    rows="3"
+                    style={{ width: "100%", padding: 7, marginTop: 2, border: "1px solid #bbb", borderRadius: 4, resize: "vertical" }}
                   />
                 </div>
+
                 <div style={{ margin: "12px 0" }}>
                   <label>Price (₹)</label>
                   <input
@@ -576,28 +667,49 @@ export default function AdminGiftsPage() {
                     name="price"
                     value={form.price}
                     min="0"
+                    step="0.01"
                     onChange={handleFormChange}
                     style={{ width: "100%", padding: 7, marginTop: 2, border: "1px solid #bbb", borderRadius: 4 }}
                   />
                 </div>
+
                 <div style={{ margin: "12px 0" }}>
                   <label>Image</label>
                   <input
                     type="file"
                     accept="image/*"
-                    name="image_file"
-                    onChange={handleFormChange}
+                    onChange={handleImageChange}
+                    style={{ 
+                      width: "100%", 
+                      padding: 7, 
+                      marginTop: 2, 
+                      border: "1px solid #bbb", 
+                      borderRadius: 4 
+                    }}
                   />
-                  {editGift && editGift.image_url && (
-                    <div>
-                      <img
-                        src={`https://api-xmg2fjjbya-uc.a.run.app${editGift.image_url}`}
-                        alt=""
-                        style={{ width: 60, height: 40, objectFit: "cover", borderRadius: 4, marginTop: 6 }}
+                  {existingImage && !image && (
+                    <div style={{ marginTop: 8 }}>
+                      <img 
+                        src={existingImage} 
+                        alt="Current"
+                        style={{ 
+                          width: "100px", 
+                          height: "100px", 
+                          objectFit: "cover", 
+                          borderRadius: "6px",
+                          border: "1px solid #eee"
+                        }}
                       />
+                      <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>Current image</p>
                     </div>
                   )}
+                  {image && (
+                    <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                      New image selected: {image.name}
+                    </p>
+                  )}
                 </div>
+
                 <div style={{ marginTop: 18 }}>
                   <button type="submit" style={{
                     background: "#2563eb",
@@ -606,13 +718,27 @@ export default function AdminGiftsPage() {
                     borderRadius: 5,
                     padding: "8px 18px",
                     marginRight: 8,
-                    fontWeight: "bold"
+                    fontWeight: "bold",
+                    cursor: "pointer"
                   }}>
                     Save
                   </button>
-                  <button type="button" onClick={() => setShowModal(false)} style={{
-                    background: "#bbb", color: "#fff", border: "none", borderRadius: 5, padding: "8px 18px"
-                  }}>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setShowModal(false);
+                      setImage(null);
+                      setExistingImage("");
+                    }}
+                    style={{
+                      background: "#bbb", 
+                      color: "#fff", 
+                      border: "none", 
+                      borderRadius: 5, 
+                      padding: "8px 18px",
+                      cursor: "pointer"
+                    }}
+                  >
                     Cancel
                   </button>
                 </div>
