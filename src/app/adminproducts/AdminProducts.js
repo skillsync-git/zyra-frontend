@@ -124,56 +124,24 @@ const handleSubmit = async (e) => {
   e.preventDefault();
   
   try {
-    let imageUrls = [];
-    
-    // Upload new images to Firebase if any
-    if (images.length > 0) {
-      console.log(`Uploading ${images.length} images to Firebase...`);
-      imageUrls = await uploadMultipleImages(images, "products");
-      console.log(`✅ Uploaded ${imageUrls.length} images:`, imageUrls);
-    }
-    
-    // For updates: keep existing images if no new images uploaded
-    if (editingId && images.length === 0 && existingImages.length > 0) {
-      imageUrls = existingImages;
-      console.log(`Using existing images:`, imageUrls);
-    }
-    
-    // Prepare payload with image URLs
-    const payload = {
-      name: form.name,
-      category_id: form.category_id,
-      price: form.price,
-      stock_quantity: form.stock_quantity,
-      description: form.description,
-      key_features: form.key_features || null,
-      offer_id: form.offer_id || null,
-      image_urls: imageUrls // Send array of Firebase URLs
-    };
-    
-    // Remove empty/null values
-    Object.keys(payload).forEach(key => {
-      if (payload[key] === '' || payload[key] === null) {
-        delete payload[key];
-      }
-    });
-    
-    console.log("=== Payload to API ===");
-    console.log(JSON.stringify(payload, null, 2));
-    console.log("======================");
-    
-    // Send JSON payload to API
     const method = editingId ? "PUT" : "POST";
     const url = editingId
       ? `https://zyra-website.onrender.com/api/products/${editingId}`
       : "https://zyra-website.onrender.com/api/products";
-    
+
+    const formData = new FormData();
+    formData.append("name", form.name);
+    formData.append("category_id", form.category_id);
+    formData.append("price", form.price);
+    formData.append("stock_quantity", form.stock_quantity);
+    formData.append("description", form.description);
+    if (form.key_features) formData.append("key_features", form.key_features);
+    if (form.offer_id) formData.append("offer_id", form.offer_id);
+    images.forEach(img => formData.append("images", img));
+
     const response = await fetch(url, {
       method,
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
+      body: formData
     });
     
     if (response.ok) {
