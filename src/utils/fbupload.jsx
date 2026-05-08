@@ -1,27 +1,25 @@
-import { ref, uploadBytes, getDownloadURL, getStorage } from "firebase/storage";
-import {storage} from '../firebase';
+const API_BASE_URL = 'https://zyra-website.onrender.com';
 
 /**
- * Uploads a file directly to Firebase Storage and returns its download URL
- * @param {File} file - browser File object
- * @param {string} folder - storage folder name
- * @returns {Promise<string>} download URL
+ * Uploads a single file to Render backend (Cloudinary)
  */
 export async function uploadToFirebaseStorage(file, folder = "uploads") {
   if (!file) throw new Error("No file provided");
 
-  //const storage = getStorage();
+  const formData = new FormData();
+  formData.append("image", file);
 
-  const safeName = file.name.replace(/\s+/g, "_");
-  const filePath = `${folder}/${Date.now()}-${safeName}`;
-
-  const storageRef = ref(storage, filePath);
-
-  await uploadBytes(storageRef, file, {
-    contentType: file.type,
+  const response = await fetch(`${API_BASE_URL}/api/upload`, {
+    method: "POST",
+    body: formData,
   });
 
-  return await getDownloadURL(storageRef);
+  if (!response.ok) {
+    throw new Error("Upload failed");
+  }
+
+  const data = await response.json();
+  return data.url;
 }
 
 export async function uploadMultipleImages(files, folder = "uploads") {
