@@ -19,6 +19,18 @@ export default function sitemap() {
       priority: 0.8,
     },
     {
+      url: 'https://www.zyrastyllz.com/sale',
+      lastModified: new Date(),
+      changeFrequency: 'daily',
+      priority: 0.8,
+    },
+    {
+      url: 'https://www.zyrastyllz.com/new',
+      lastModified: new Date(),
+      changeFrequency: 'daily',
+      priority: 0.8,
+    },
+    {
       url: 'https://www.zyrastyllz.com/contact',
       lastModified: new Date(),
       changeFrequency: 'monthly',

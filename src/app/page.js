@@ -2,9 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Mail, ArrowRight, Star, Heart, Leaf, TrendingUp, Package, Truck, Shield, Award, Search, ShoppingCart, User, Menu, X, CheckCircle, Gift, Facebook, Instagram, Twitter, Youtube } from 'lucide-react';
 
-import '../firebase'
+
 
 const API_BASE_URL = 'https://zyra-website.onrender.com';
+
+
 
 export default function HomePage() {
   const [currentSlide, setCurrentSlide] = useState(0);
